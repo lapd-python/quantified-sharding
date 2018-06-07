@@ -25,8 +25,6 @@ counter = 0
 startBlock = 4400000
 endBlock = 4400050
 
-
-
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressBalances):
@@ -62,35 +60,47 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
-		# Get the last epoch fromAddress had a transaction
+		# Get the last transaction involving fromAddress
 		lastTxn = addressBalances[fromAddr][-1]
+		txnEpoch = lastTxn['epoch']
 
-		# Decide whether to put it in this epoch or the next
-		# if (txnValue > fromAddrInitialBalance):
-			# print "====== Next epoch? ====="
-			# print lastTxn
-			# print "fromAddrInitialBal: " + str(fromAddrInitialBalance )
-			# print "TxnValue: " + str(txnValue )
+		# Inserts internal transaction if new endBal is negative (see issue #17)
+		# -- solution: add a 'internal' transaction 
+		newFromAddrBal = fromAddrInitialBalance - txnValue
+		if (newFromAddrBal < 0):
+			fromAddrCurBlockEndingBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
+			addressBalances[fromAddr].append({
+				'origBlock': curBlockNum-1, 	# default approximation
+				'endBal': fromAddrCurBlockEndingBal + txnValue,
+				'epoch': lastTxn['epoch']+1,	# default approximation (possible for internal transaction to be in same block)
+				'txnType': 'internal',
+				'txnValue': fromAddrCurBlockEndingBal - newFromAddrBal
+			})
+			
+			newFromAddrBal = fromAddrCurBlockEndingBal
+			txnEpoch += 2	# default approximation (internal transaction needs to settle first, before next transac)
 		
-		# Calculate new endBal for both accounts
-		newFromAddrBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
-		if (toAddr): newToAddrBal = web3.eth.getBalance(toAddr, block_identifier=curBlockNum)
+		# if (toAddr): newToAddrBal = web3.eth.getBalance(toAddr, block_identifier=curBlockNum)
+		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
 		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
 
+		# Get the last transaction involving fromAddress (TODO: refactor)
+		lastTxn = addressBalances[fromAddr][-1]
+
 		# Insert the current transaction addressBalances
-		if (fromAddr not in addressBalances):
-			addressBalances[fromAddr] = []
+		# if (fromAddr not in addressBalances):
+		# 		addressBalances[fromAddr] = []
 		addressBalances[fromAddr].append({ 
 			'origBlock': curBlockNum, 
 			'endBal': newFromAddrBal, 
-			'epoch': curBlockNum-startBlock,
+			'epoch': txnEpoch,
 			'txnType': "send",
 			'txnValue': -txnValue
 		})
 		if (toAddr): addressBalances[toAddr].append({
 			'origBlock': curBlockNum, 
 			'endBal': newToAddrBal,
-			'epoch': curBlockNum-startBlock,
+			'epoch': txnEpoch,
 			'txnType': "receive",
 			'txnValue': txnValue
 		})
@@ -112,5 +122,5 @@ for curBlockNum in range(startBlock,endBlock):
 
 			
 
-print pprint.pprint(addressBalances)
+pprint.pprint(addressBalances)
 
