@@ -47,7 +47,11 @@ for curBlockNum in range(startBlock,endBlock):
 		# fromAddress details	
 		fromAddr = txn['from']
 		fromAddrInitialBalance = getInitialBalance(fromAddr)		
-	
+		
+		# Shard
+		shard = hash(fromAddr) % 50
+		print str(fromAddr) + " is sharded to " + str(shard)
+ 	
 		# toAddress details	
 		toAddr = txn['to']
 		if (toAddr): toAddrInitialBalance = getInitialBalance(toAddr)
@@ -56,7 +60,7 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
-		# Insert the current transaction into the shardedChain and addressBalances
+		# Insert the current transaction addressBalances
 		if (fromAddr not in addressBalances):
 			addressBalances[fromAddr] = []
 		addressBalances[fromAddr].append({ 
@@ -78,7 +82,6 @@ for curBlockNum in range(startBlock,endBlock):
 			if (toAddr): print "	to: " + toAddr
 			print "	txnValue: " + str(web3.fromWei(txnValue, 'ether'))
 			print txn		
-
 
 print pprint.pprint(addressBalances)
 
