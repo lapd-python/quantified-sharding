@@ -36,6 +36,11 @@ def getInitialBalance(addr):
 		}]
 	return addressBalances[addr][-1]['endBal']
 
+def addToShardedChain(txnEpoch, shard, txnHash):
+	if(txnEpoch not in shardedChain): shardedChain[txnEpoch] = {}
+	if (shard not in shardedChain[txnEpoch]): shardedChain[txnEpoch][shard] = []
+	shardedChain[txnEpoch][shard].append(txnHash)
+
 for curBlockNum in range(startBlock,endBlock):
 	
 	# Gets current block	
@@ -69,23 +74,27 @@ for curBlockNum in range(startBlock,endBlock):
 		newFromAddrBal = fromAddrInitialBalance - txnValue
 		if (newFromAddrBal < 0):
 			fromAddrCurBlockEndingBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
+			txnEpoch += 1	# default approximation (internal transaction should be in new block)
 			addressBalances[fromAddr].append({
 				'origBlock': curBlockNum-1, 	# default approximation
 				'endBal': fromAddrCurBlockEndingBal + txnValue,
-				'epoch': lastTxn['epoch']+1,	# default approximation (possible for internal transaction to be in same block)
+				'epoch': txnEpoch,
 				'txnType': 'internal',
 				'txnValue': fromAddrCurBlockEndingBal - newFromAddrBal
 			})
+			addToShardedChain(txnEpoch, shard, '0xInternal')
 			
 			newFromAddrBal = fromAddrCurBlockEndingBal
-			txnEpoch += 2	# default approximation (internal transaction needs to settle first, before next transac)
+			txnEpoch += 1	# default approximation (internal transaction needs to settle first, before next transac)
 		
-		# if (toAddr): newToAddrBal = web3.eth.getBalance(toAddr, block_identifier=curBlockNum)
 		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
 		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
 
 		# Get the last transaction involving fromAddress (TODO: refactor)
 		lastTxn = addressBalances[fromAddr][-1]
+		
+		# shard
+		addToShardedChain(txnEpoch, shard, txnHash)
 
 		# Insert the current transaction addressBalances
 		# if (fromAddr not in addressBalances):
@@ -120,7 +129,11 @@ for curBlockNum in range(startBlock,endBlock):
 		
 		debug = False		
 
-			
+# Get statistics
+def shardSize(epochShards):
+	return { shard: len(txnArr) for shard, txnArr in epochShards.items() }
 
-pprint.pprint(addressBalances)
+shardedChainStats = { epoch: shardSize(epochShards) for epoch, epochShards in shardedChain.items() }
+
+pprint.pprint(shardedChainStats)
 
