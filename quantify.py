@@ -25,6 +25,12 @@ counter = 0
 startBlock = 4400000
 endBlock = 4400050
 
+# Function to getInitialBalance
+def getInitialBalance(addr):
+	if(addr not in addressBalances):
+		addressBalances[addr] = [ [startBlock-1,web3.eth.getBalance(addr, block_identifier=(startBlock-1))] ]
+	return addressBalances[addr][-1][1]
+
 for curBlockNum in range(startBlock,endBlock):
 	
 	# Gets current block	
@@ -33,18 +39,15 @@ for curBlockNum in range(startBlock,endBlock):
 
 	# Iterates through current block's transactions
 	for txn in currentBlock.transactions:
-		counter+=1
 		
 		# fromAddress details	
 		fromAddr = txn['from']
-		if (fromAddr not in addressBalances):		# Initialize fromAddr
-			 addressBalances[fromAddr] = []
-		
-		if addressBalances[fromAddr]:	# if list is not empty
-			fromAddrInitialBalance = addressBalances[fromAddr][-1]
-		else:
-			fromAddrInitialBalance = web3.eth.getBalance(fromAddr, block_identifier=(startBlock-1))	
-		
+		if (fromAddr not in addressBalances): 
+			addressBalances[fromAddr] = [ [startBlock-1,web3.eth.getBalance(fromAddr, block_identifier=(startBlock-1))] ]
+		print addressBalances[fromAddr]
+		fromAddrInitialBalance = addressBalances[fromAddr][-1][1]
+		print fromAddrInitialBalance	
+
 		# toAddress details	
 		toAddr = txn['to']
 
@@ -57,7 +60,7 @@ for curBlockNum in range(startBlock,endBlock):
 			addressBalances[fromAddr] = []
 		# create data struct to represent the current transaction
 		# later, create struct to represent current epoch
-		addressBalances[fromAddr].append(curBlockNum)
+		addressBalances[fromAddr].append([curBlockNum, fromAddrInitialBalance-txnValue])
 
 		if (debug):	
 			print "	========= New Txn ========"
@@ -70,5 +73,4 @@ for curBlockNum in range(startBlock,endBlock):
 
 
 print pprint.pprint(addressBalances)
-print "Counter: " + str(counter)
 
