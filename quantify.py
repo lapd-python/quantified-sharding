@@ -25,6 +25,8 @@ counter = 0
 startBlock = 4400000
 endBlock = 4400050
 
+
+
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressBalances):
@@ -51,8 +53,7 @@ for curBlockNum in range(startBlock,endBlock):
 		
 		# Shard
 		shard = hash(fromAddr) % 50
-		print str(fromAddr) + " is sharded to " + str(shard)
- 	
+
 		# toAddress details	
 		toAddr = txn['to']
 		if (toAddr): toAddrInitialBalance = getInitialBalance(toAddr)
@@ -61,20 +62,37 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
+		# Get the last epoch fromAddress had a transaction
+		lastTxn = addressBalances[fromAddr][-1]
+
+		# Decide whether to put it in this epoch or the next
+		# if (txnValue > fromAddrInitialBalance):
+			# print "====== Next epoch? ====="
+			# print lastTxn
+			# print "fromAddrInitialBal: " + str(fromAddrInitialBalance )
+			# print "TxnValue: " + str(txnValue )
+		
+		# Calculate new endBal for both accounts
+		newFromAddrBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
+		if (toAddr): newToAddrBal = web3.eth.getBalance(toAddr, block_identifier=curBlockNum)
+		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
+
 		# Insert the current transaction addressBalances
 		if (fromAddr not in addressBalances):
 			addressBalances[fromAddr] = []
 		addressBalances[fromAddr].append({ 
 			'origBlock': curBlockNum, 
-			'endBal': fromAddrInitialBalance-txnValue, 
+			'endBal': newFromAddrBal, 
 			'epoch': curBlockNum-startBlock,
-			'txnType': "send"
+			'txnType': "send",
+			'txnValue': -txnValue
 		})
 		if (toAddr): addressBalances[toAddr].append({
 			'origBlock': curBlockNum, 
-			'endBal': toAddrInitialBalance+txnValue, 
+			'endBal': newToAddrBal,
 			'epoch': curBlockNum-startBlock,
-			'txnType': "receive"
+			'txnType': "receive",
+			'txnValue': txnValue
 		})
 
 		if (debug):	
@@ -82,9 +100,17 @@ for curBlockNum in range(startBlock,endBlock):
 			print "	Current Block Num: " + str(curBlockNum)
 			print "	from: " + fromAddr
 			print "	from Address balance before: " + str(web3.fromWei(fromAddrInitialBalance, 'ether'))
-			if (toAddr): print "	to: " + toAddr
+			print pprint.pprint(addressBalances[fromAddr])
 			print "	txnValue: " + str(web3.fromWei(txnValue, 'ether'))
-			print txn		
+			print "	from Address balance after: " + str(web3.fromWei(newFromAddrBal, 'ether'))
+			if (toAddr): 
+				print "	to: " + toAddr
+				print "	to Address balance before: " + str(web3.fromWei(toAddrInitialBalance, 'ether'))
+				print " to Address balance after: " + str(web3.fromWei(newToAddrBal, 'ether'))
+		
+		debug = False		
+
+			
 
 print pprint.pprint(addressBalances)
 
