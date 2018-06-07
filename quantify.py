@@ -24,6 +24,7 @@ counter = 0
 # Current parameters
 startBlock = 4400000
 endBlock = 4400050
+maxShardSize = 50
 
 # Function to getInitialBalance
 def getInitialBalance(addr):
@@ -39,7 +40,13 @@ def getInitialBalance(addr):
 def addToShardedChain(txnEpoch, shard, txnHash):
 	if(txnEpoch not in shardedChain): shardedChain[txnEpoch] = {}
 	if (shard not in shardedChain[txnEpoch]): shardedChain[txnEpoch][shard] = []
-	shardedChain[txnEpoch][shard].append(txnHash)
+	
+	# Move to next epoch if epochShard is full
+	currentShardSize = len(shardedChain[txnEpoch][shard])
+	if (currentShardSize >= maxShardSize): 
+		addToShardedChain(txnEpoch+1, shard, txnHash)
+	else:
+		shardedChain[txnEpoch][shard].append(txnHash)
 
 for curBlockNum in range(startBlock,endBlock):
 	
