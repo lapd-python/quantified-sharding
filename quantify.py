@@ -31,6 +31,7 @@ def getInitialBalance(addr):
 		addressBalances[addr] = [{ 
 			'origBlock': startBlock-1, 
 			'endBal': web3.eth.getBalance(addr, block_identifier=(startBlock-1)), 
+			'epoch': 0,
 			'txnType':"init"
 		}]
 	return addressBalances[addr][-1]['endBal']
@@ -66,11 +67,13 @@ for curBlockNum in range(startBlock,endBlock):
 		addressBalances[fromAddr].append({ 
 			'origBlock': curBlockNum, 
 			'endBal': fromAddrInitialBalance-txnValue, 
+			'epoch': curBlockNum-startBlock,
 			'txnType': "send"
 		})
 		if (toAddr): addressBalances[toAddr].append({
 			'origBlock': curBlockNum, 
 			'endBal': toAddrInitialBalance+txnValue, 
+			'epoch': curBlockNum-startBlock,
 			'txnType': "receive"
 		})
 
