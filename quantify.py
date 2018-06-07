@@ -28,8 +28,12 @@ endBlock = 4400050
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressBalances):
-		addressBalances[addr] = [ [startBlock-1, web3.eth.getBalance(addr, block_identifier=(startBlock-1)), "init"] ]
-	return addressBalances[addr][-1][1]
+		addressBalances[addr] = [{ 
+			'origBlock': startBlock-1, 
+			'endBal': web3.eth.getBalance(addr, block_identifier=(startBlock-1)), 
+			'txnType':"init"
+		}]
+	return addressBalances[addr][-1]['endBal']
 
 for curBlockNum in range(startBlock,endBlock):
 	
@@ -55,10 +59,16 @@ for curBlockNum in range(startBlock,endBlock):
 		# Insert the current transaction into the shardedChain and addressBalances
 		if (fromAddr not in addressBalances):
 			addressBalances[fromAddr] = []
-		# create data struct to represent the current transaction
-		# later, create struct to represent current epoch
-		addressBalances[fromAddr].append([curBlockNum, fromAddrInitialBalance-txnValue, "send"])
-		if (toAddr): addressBalances[toAddr].append([curBlockNum, toAddrInitialBalance+txnValue, "receive"])
+		addressBalances[fromAddr].append({ 
+			'origBlock': curBlockNum, 
+			'endBal': fromAddrInitialBalance-txnValue, 
+			'txnType': "send"
+		})
+		if (toAddr): addressBalances[toAddr].append({
+			'origBlock': curBlockNum, 
+			'endBal': toAddrInitialBalance+txnValue, 
+			'txnType': "receive"
+		})
 
 		if (debug):	
 			print "	========= New Txn ========"
