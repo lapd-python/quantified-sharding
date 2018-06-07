@@ -1,5 +1,6 @@
 from web3 import Web3, HTTPProvider
 import json
+import pprint
 
 debug = False
 
@@ -32,22 +33,42 @@ for curBlockNum in range(startBlock,endBlock):
 
 	# Iterates through current block's transactions
 	for txn in currentBlock.transactions:
+		counter+=1
 		
 		# fromAddress details	
 		fromAddr = txn['from']
-		fromAddrInitialBalance = web3.eth.getBalance(fromAddr, block_identifier=(startBlock-1))	
+		if (fromAddr not in addressBalances):		# Initialize fromAddr
+			 addressBalances[fromAddr] = []
 		
+		if addressBalances[fromAddr]:	# if list is not empty
+			fromAddrInitialBalance = addressBalances[fromAddr][-1]
+		else:
+			fromAddrInitialBalance = web3.eth.getBalance(fromAddr, block_identifier=(startBlock-1))	
+		
+		# toAddress details	
 		toAddr = txn['to']
+
+		# txn details
 		txnValue = txn['value']
+		txnHash = txn['hash']
+
+		# Insert the current transaction into the shardedChain and addressBalances
+		if (fromAddr not in addressBalances):
+			addressBalances[fromAddr] = []
+		# create data struct to represent the current transaction
+		# later, create struct to represent current epoch
+		addressBalances[fromAddr].append(curBlockNum)
 
 		if (debug):	
 			print "	========= New Txn ========"
 			print "	Current Block Num: " + str(curBlockNum)
 			print "	from: " + fromAddr
-			print "	from Address balance: " + str(web3.fromWei(fromAddrBal, 'ether'))
-			print "	from Address balance before: " + str(web3.fromWei(fromAddrBalBefore, 'ether'))
+			print "	from Address balance before: " + str(web3.fromWei(fromAddrInitialBalance, 'ether'))
 			if (toAddr): print "	to: " + toAddr
 			print "	txnValue: " + str(web3.fromWei(txnValue, 'ether'))
-		counter+=1
+			print txn		
 
+
+print pprint.pprint(addressBalances)
 print "Counter: " + str(counter)
+
