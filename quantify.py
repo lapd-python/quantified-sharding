@@ -1,6 +1,7 @@
 from web3 import Web3, HTTPProvider
 import json
 import pprint
+import requests
 
 debug = False
 
@@ -12,6 +13,8 @@ numBuckets = 50
 
 # Instantiate web3
 web3 = Web3(HTTPProvider('http://localhost:' + rpcport))
+# Instantiate HTTP connection to Geth JSONRPC
+session = requests.Session()
 
 # Iterate over blocks and print transactions
 latest = web3.eth.getBlock('latest').number
@@ -75,7 +78,32 @@ for curBlockNum in range(startBlock,endBlock):
 		# Get the last transaction involving fromAddress
 		lastTxn = addressBalances[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
-
+	
+		# Gets transaction trace 	
+		params = [txnHash]
+		payload = {
+			"jsonrpc":"2.0",
+			"method":"debug_traceTransaction",
+			"params":params,
+			"id":1
+		}
+		headers = {'Content-type':'application/json'}
+		debugTraceTransaction = session.post(
+			'http://localhost:'+rpcport, 
+			json=payload, 
+			headers=headers
+		)
+		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
+		monitoredOpcodes = ['CREATE', 'CALL', 'SLOAD', 'SSTORE', 'CALLCODE', 'DELEGATECALL', 'SUICIDE', 'SELFDESTRUCT']
+		if (transactionTrace):
+			for log in transactionTrace:
+				if(log['op'] in monitoredOpcodes):
+					# pprint.pprint(log)
+					print(log['op'])
+					if(log['op'] == 'CALL'):
+						print txnHash
+						pprint.pprint(log)
+		
 		# Inserts internal transaction if new endBal is negative (see issue #17)
 		# -- solution: add a 'internal' transaction 
 		newFromAddrBal = fromAddrInitialBalance - txnValue
