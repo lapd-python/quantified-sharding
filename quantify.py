@@ -3,7 +3,9 @@ import json
 import pprint
 import requests
 
+# Debug flags
 debug = False
+debug_CALL_transactions = False
 
 # Geth node parameters
 rpcport = '9111'
@@ -30,7 +32,16 @@ endBlock = 4400050
 maxShardSize = 50
 
 # Opcodes to monitor
-monitoredOpcodes = ['CREATE', 'CALL', 'SLOAD', 'SSTORE', 'CALLCODE', 'DELEGATECALL', 'SUICIDE', 'SELFDESTRUCT']
+monitoredOpcodes = [
+	'CREATE', 
+	'CALL', 
+	'SLOAD',
+	'SSTORE', 
+	'CALLCODE', 
+	'DELEGATECALL', 
+	'SUICIDE', 
+	'SELFDESTRUCT'
+]
 	
 # Function to getInitialBalance
 def getInitialBalance(addr):
@@ -81,40 +92,6 @@ for curBlockNum in range(startBlock,endBlock):
 		# Get the last transaction involving fromAddress
 		lastTxn = addressBalances[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
-	
-		# Gets EVM Trace from debug_traceTransaction	
-		params = [txnHash]
-		payload = {
-			"jsonrpc":"2.0",
-			"method":"debug_traceTransaction",
-			"params":params,
-			"id":1
-		}
-		headers = {'Content-type':'application/json'}
-		debugTraceTransaction = session.post(
-			'http://localhost:'+rpcport, 
-			json=payload, 
-			headers=headers
-		)
-		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
-
-		# Handler for different EVM Opcodes
-		if (transactionTrace):
-			for log in transactionTrace:
-				#if(log['op'] in monitoredOpcodes):
-				if(log['op'] == 'CALL'):
-					print "====== Hash: " + txnHash
-					txnGas = int(log['stack'][-1], 16)
-					internalFromAddr = toAddr
-					internalToAddr = log['stack'][-2]
-					internalTxnValue = int(log['stack'][-3], 16)
-					print "TxnGas: " + str(txnGas)
-					print "Internal fromAddr: " + internalFromAddr
-					print "Internal toAddr: " + internalToAddr
-					print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
-						
-						
-							
 		# Inserts internal transaction if new endBal is negative (see issue #17)
 		# -- solution: add a 'internal' transaction 
 		newFromAddrBal = fromAddrInitialBalance - txnValue
@@ -134,6 +111,8 @@ for curBlockNum in range(startBlock,endBlock):
 			txnEpoch += 1	# default approximation (internal transaction needs to settle first, before next transac)
 		
 		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
+	
+		# Sanity check for 
 		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
 
 		# Get the last transaction involving fromAddress (TODO: refactor)
@@ -159,6 +138,63 @@ for curBlockNum in range(startBlock,endBlock):
 			'txnType': "receive",
 			'txnValue': txnValue
 		})
+	
+		# Gets EVM Trace from debug_traceTransaction	
+		params = [txnHash]
+		payload = {
+			"jsonrpc":"2.0",
+			"method":"debug_traceTransaction",
+			"params":params,
+			"id":1
+		}
+		headers = {'Content-type':'application/json'}
+		debugTraceTransaction = session.post(
+			'http://localhost:'+rpcport, 
+			json=payload, 
+			headers=headers
+		)
+		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
+
+		# Handler for different EVM Opcodes
+		if (transactionTrace):
+			for log in transactionTrace:
+				#if(log['op'] in monitoredOpcodes):
+				if(log['op'] == 'CALL'):
+					txnGas = int(log['stack'][-1], 16)
+					internalFromAddr = toAddr
+					internalToAddr = log['stack'][-2]
+					internalTxnValue = int(log['stack'][-3], 16)
+						
+					internalFromAddrInitialBalance = getInitialBalance(internalFromAddr) + txnValue
+					addressBalances[fromAddr].append({ 
+						'origBlock': curBlockNum, 
+						'endBal': internalFromAddrInitialBalance, 
+						'epoch': txnEpoch,
+						'txnType': "send",
+						'txnValue': -txnValue
+					})
+					if (toAddr): addressBalances[toAddr].append({
+						'origBlock': curBlockNum, 
+						'endBal': newToAddrBal,
+						'epoch': txnEpoch,
+						'txnType': "receive",
+						'txnValue': txnValue
+					})
+
+					# Sanity check for internal transactions
+					if (internalFromAddrInitialBalance < internalTxnValue): 
+						debug_CALL_transactions = True		
+
+					if (debug_CALL_transactions):	
+						print "====== Hash: " + txnHash
+						print "TxnGas: " + str(txnGas)
+						print "Internal fromAddr: " + internalFromAddr
+						print "Internal toAddr: " + internalToAddr
+						print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
+						debug_CALL_transactions = False
+
+		
+
 
 		if (debug):	
 			print "	========= New Txn ========"
