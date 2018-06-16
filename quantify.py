@@ -29,6 +29,9 @@ startBlock = 4400000
 endBlock = 4400050
 maxShardSize = 50
 
+# Opcodes to monitor
+monitoredOpcodes = ['CREATE', 'CALL', 'SLOAD', 'SSTORE', 'CALLCODE', 'DELEGATECALL', 'SUICIDE', 'SELFDESTRUCT']
+	
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressBalances):
@@ -79,7 +82,7 @@ for curBlockNum in range(startBlock,endBlock):
 		lastTxn = addressBalances[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
 	
-		# Gets transaction trace 	
+		# Gets EVM Trace from debug_traceTransaction	
 		params = [txnHash]
 		payload = {
 			"jsonrpc":"2.0",
@@ -94,16 +97,24 @@ for curBlockNum in range(startBlock,endBlock):
 			headers=headers
 		)
 		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
-		monitoredOpcodes = ['CREATE', 'CALL', 'SLOAD', 'SSTORE', 'CALLCODE', 'DELEGATECALL', 'SUICIDE', 'SELFDESTRUCT']
+
+		# Handler for different EVM Opcodes
 		if (transactionTrace):
 			for log in transactionTrace:
-				if(log['op'] in monitoredOpcodes):
-					# pprint.pprint(log)
-					print(log['op'])
-					if(log['op'] == 'CALL'):
-						print txnHash
-						pprint.pprint(log)
-		
+				#if(log['op'] in monitoredOpcodes):
+				if(log['op'] == 'CALL'):
+					print "====== Hash: " + txnHash
+					txnGas = int(log['stack'][-1], 16)
+					internalFromAddr = toAddr
+					internalToAddr = log['stack'][-2]
+					internalTxnValue = int(log['stack'][-3], 16)
+					print "TxnGas: " + str(txnGas)
+					print "Internal fromAddr: " + internalFromAddr
+					print "Internal toAddr: " + internalToAddr
+					print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
+						
+						
+							
 		# Inserts internal transaction if new endBal is negative (see issue #17)
 		# -- solution: add a 'internal' transaction 
 		newFromAddrBal = fromAddrInitialBalance - txnValue
