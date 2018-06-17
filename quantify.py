@@ -113,15 +113,19 @@ for curBlockNum in range(startBlock,endBlock):
 		# 		addressTransactionLogs[fromAddr] = []
 		addressTransactionLogs[fromAddr].append({ 
 			'origBlock': curBlockNum, 
+			'startBal': fromAddrInitialBalance,
 			'endBal': newFromAddrBal, 
 			'epoch': txnEpoch,
+			'shard': shard,
 			'txnType': "send",
 			'txnValue': -txnValue
 		})
 		if (toAddr): addressTransactionLogs[toAddr].append({
 			'origBlock': curBlockNum, 
+			'startBal': toAddrInitialBalance,
 			'endBal': newToAddrBal,
 			'epoch': txnEpoch,
+			'shard': shard,
 			'txnType': "receive",
 			'txnValue': txnValue
 		})
@@ -158,15 +162,19 @@ for curBlockNum in range(startBlock,endBlock):
 					# TODO: Placeholder for addressTransactionLogs append
 					addressTransactionLogs[internalFromAddr].append({ 
 						'origBlock': curBlockNum, 
+						'startBal': internalFromAddrInitialBalance,
 						'endBal': internalFromAddrInitialBalance - internalTxnValue, 
 						'epoch': txnEpoch, # TODO: Replace with epoch-pushing algorithm
+						'shard': shard,
 						'txnType': "internal-send",
 						'txnValue': -internalTxnValue
 					})
 					addressTransactionLogs[internalToAddr].append({
 						'origBlock': curBlockNum, 
+						'startBal': internalToAddrInitialBalance,
 						'endBal': internalToAddrInitialBalance + internalTxnValue,
 						'epoch': txnEpoch, # TODO: replace with epoch-pushing algorithm
+						'shard': shard,
 						'txnType': "internal-receive",
 						'txnValue': internalTxnValue
 					})
