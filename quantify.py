@@ -4,7 +4,7 @@ import pprint
 import requests
 
 # Debug flags
-debug = False
+debug_transaction = False
 debug_CALL_transactions = False
 
 # Geth node parameters
@@ -28,7 +28,7 @@ counter = 0
 
 # Current parameters
 startBlock = 4400000
-endBlock = 4400050
+endBlock = 4400010
 maxShardSize = 50
 
 # Opcodes to monitor
@@ -89,6 +89,7 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
+		# TODO: remove
 		# Get the last transaction involving fromAddress
 		lastTxn = addressBalances[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
@@ -113,7 +114,7 @@ for curBlockNum in range(startBlock,endBlock):
 		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
 	
 		# Sanity check for 
-		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
+		if (newFromAddrBal < 0 or newToAddrBal < 0): debug_transaction = True
 
 		# Get the last transaction involving fromAddress (TODO: refactor)
 		lastTxn = addressBalances[fromAddr][-1]
@@ -158,32 +159,36 @@ for curBlockNum in range(startBlock,endBlock):
 		# Handler for different EVM Opcodes
 		if (transactionTrace):
 			for log in transactionTrace:
-				#if(log['op'] in monitoredOpcodes):
+				
 				if(log['op'] == 'CALL'):
 					txnGas = int(log['stack'][-1], 16)
 					internalFromAddr = toAddr
-					internalToAddr = log['stack'][-2]
+					internalToAddr = '0x' + log['stack'][-2][24:64]	# Turn 64 char string into formatted address TODO: refactor into helper methhod
 					internalTxnValue = int(log['stack'][-3], 16)
 						
-					internalFromAddrInitialBalance = getInitialBalance(internalFromAddr) + txnValue
-					addressBalances[fromAddr].append({ 
+					internalFromAddrInitialBalance = getInitialBalance(internalFromAddr) + txnValue # Note: We add txnValue to cover instances where contract is a "pass through" contract
+					internalToAddrInitialBalance = getInitialBalance(internalToAddr)	
+					
+					# TODO: Placeholder for addressBalances append
+					addressBalances[internalFromAddr].append({ 
 						'origBlock': curBlockNum, 
-						'endBal': internalFromAddrInitialBalance, 
-						'epoch': txnEpoch,
-						'txnType': "send",
-						'txnValue': -txnValue
+						'endBal': internalFromAddrInitialBalance - internalTxnValue, 
+						'epoch': txnEpoch, # TODO: Replace with epoch-pushing algorithm
+						'txnType': "internal-send",
+						'txnValue': -internalTxnValue
 					})
-					if (toAddr): addressBalances[toAddr].append({
+					addressBalances[internalToAddr].append({
 						'origBlock': curBlockNum, 
-						'endBal': newToAddrBal,
-						'epoch': txnEpoch,
-						'txnType': "receive",
-						'txnValue': txnValue
+						'endBal': internalToAddrInitialBalance + internalTxnValue,
+						'epoch': txnEpoch, # TODO: replace with epoch-pushing algorithm
+						'txnType': "internal-receive",
+						'txnValue': internalTxnValue
 					})
 
 					# Sanity check for internal transactions
 					if (internalFromAddrInitialBalance < internalTxnValue): 
-						debug_CALL_transactions = True		
+						debug_CALL_transactions = True	
+						debug_transaction = True	
 
 					if (debug_CALL_transactions):	
 						print "====== Hash: " + txnHash
@@ -193,10 +198,7 @@ for curBlockNum in range(startBlock,endBlock):
 						print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
 						debug_CALL_transactions = False
 
-		
-
-
-		if (debug):	
+		if (debug_transaction):	
 			print "	========= New Txn ========"
 			print "	Current Block Num: " + str(curBlockNum)
 			print "	from: " + fromAddr
@@ -209,7 +211,7 @@ for curBlockNum in range(startBlock,endBlock):
 				print "	to Address balance before: " + str(web3.fromWei(toAddrInitialBalance, 'ether'))
 				print " to Address balance after: " + str(web3.fromWei(newToAddrBal, 'ether'))
 		
-		debug = False		
+		debug_transaction = False		
 
 # Get statistics
 def shardSize(epochShards):
@@ -217,5 +219,5 @@ def shardSize(epochShards):
 
 shardedChainStats = { epoch: shardSize(epochShards) for epoch, epochShards in shardedChain.items() }
 
+pprint.pprint(addressBalances)
 pprint.pprint(shardedChainStats)
-
