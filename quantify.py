@@ -46,9 +46,12 @@ monitoredOpcodes = [
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressTransactionLogs):
+		addressBal = web3.eth.getBalance(addr, block_identifier=(startBlock-1))
 		addressTransactionLogs[addr] = [{ 
 			'origBlock': startBlock-1, 
-			'endBal': web3.eth.getBalance(addr, block_identifier=(startBlock-1)), 
+			'startBal': addressBal,
+			'endBal': addressBal,
+			'shard': -1,
 			'epoch': 0,
 			'txnType':"init"
 		}]
@@ -89,28 +92,29 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
-		# TODO: remove
-		# Get the last transaction involving fromAddress
+	#	# TODO: remove
+	#	# Get the last transaction involving fromAddress
+	#	# Inserts internal transaction if new endBal is negative (see issue #17)
+	#	# -- solution: add a 'internal' transaction 
+	#	if (newFromAddrBal < 0):
+	#		debug_transaction = True
+	#		fromAddrCurBlockEndingBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
+	#		txnEpoch += 1	# default approximation (internal transaction should be in new block)
+	#		addressTransactionLogs[fromAddr].append({
+	#			'origBlock': curBlockNum-1, 	# default approximation
+	#			'endBal': fromAddrCurBlockEndingBal + txnValue,
+	#			'epoch': txnEpoch,
+	#			'txnType': 'internal',
+	#			'txnValue': fromAddrCurBlockEndingBal - newFromAddrBal
+	#		})
+	#		addToShardedChain(txnEpoch, shard, '0xInternal')
+	#		
+	#		newFromAddrBal = fromAddrCurBlockEndingBal
+	#		txnEpoch += 1	# default approximation (internal transaction needs to settle first, before next transac)
+
 		lastTxn = addressTransactionLogs[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
-		# Inserts internal transaction if new endBal is negative (see issue #17)
-		# -- solution: add a 'internal' transaction 
 		newFromAddrBal = fromAddrInitialBalance - txnValue
-		if (newFromAddrBal < 0):
-			fromAddrCurBlockEndingBal = web3.eth.getBalance(fromAddr, block_identifier=curBlockNum)
-			txnEpoch += 1	# default approximation (internal transaction should be in new block)
-			addressTransactionLogs[fromAddr].append({
-				'origBlock': curBlockNum-1, 	# default approximation
-				'endBal': fromAddrCurBlockEndingBal + txnValue,
-				'epoch': txnEpoch,
-				'txnType': 'internal',
-				'txnValue': fromAddrCurBlockEndingBal - newFromAddrBal
-			})
-			addToShardedChain(txnEpoch, shard, '0xInternal')
-			
-			newFromAddrBal = fromAddrCurBlockEndingBal
-			txnEpoch += 1	# default approximation (internal transaction needs to settle first, before next transac)
-		
 		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
 	
 		# Sanity check for 
