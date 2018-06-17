@@ -3,7 +3,9 @@ import json
 import pprint
 import requests
 
-debug = False
+# Debug flags
+debug_transaction = False
+debug_CALL_transactions = False
 
 # Geth node parameters
 rpcport = '9111'
@@ -26,9 +28,21 @@ counter = 0
 
 # Current parameters
 startBlock = 4400000
-endBlock = 4400050
+endBlock = 4400010
 maxShardSize = 50
 
+# Opcodes to monitor
+monitoredOpcodes = [
+	'CREATE', 
+	'CALL', 
+	'SLOAD',
+	'SSTORE', 
+	'CALLCODE', 
+	'DELEGATECALL', 
+	'SUICIDE', 
+	'SELFDESTRUCT'
+]
+	
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressBalances):
@@ -75,35 +89,10 @@ for curBlockNum in range(startBlock,endBlock):
 		txnValue = txn['value']
 		txnHash = txn['hash']
 
+		# TODO: remove
 		# Get the last transaction involving fromAddress
 		lastTxn = addressBalances[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']
-	
-		# Gets transaction trace 	
-		params = [txnHash]
-		payload = {
-			"jsonrpc":"2.0",
-			"method":"debug_traceTransaction",
-			"params":params,
-			"id":1
-		}
-		headers = {'Content-type':'application/json'}
-		debugTraceTransaction = session.post(
-			'http://localhost:'+rpcport, 
-			json=payload, 
-			headers=headers
-		)
-		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
-		monitoredOpcodes = ['CREATE', 'CALL', 'SLOAD', 'SSTORE', 'CALLCODE', 'DELEGATECALL', 'SUICIDE', 'SELFDESTRUCT']
-		if (transactionTrace):
-			for log in transactionTrace:
-				if(log['op'] in monitoredOpcodes):
-					# pprint.pprint(log)
-					print(log['op'])
-					if(log['op'] == 'CALL'):
-						print txnHash
-						pprint.pprint(log)
-		
 		# Inserts internal transaction if new endBal is negative (see issue #17)
 		# -- solution: add a 'internal' transaction 
 		newFromAddrBal = fromAddrInitialBalance - txnValue
@@ -123,7 +112,9 @@ for curBlockNum in range(startBlock,endBlock):
 			txnEpoch += 1	# default approximation (internal transaction needs to settle first, before next transac)
 		
 		if (toAddr): newToAddrBal = toAddrInitialBalance + txnValue
-		if (newFromAddrBal < 0 or newToAddrBal < 0): debug = True
+	
+		# Sanity check for 
+		if (newFromAddrBal < 0 or newToAddrBal < 0): debug_transaction = True
 
 		# Get the last transaction involving fromAddress (TODO: refactor)
 		lastTxn = addressBalances[fromAddr][-1]
@@ -148,8 +139,66 @@ for curBlockNum in range(startBlock,endBlock):
 			'txnType': "receive",
 			'txnValue': txnValue
 		})
+	
+		# Gets EVM Trace from debug_traceTransaction	
+		params = [txnHash]
+		payload = {
+			"jsonrpc":"2.0",
+			"method":"debug_traceTransaction",
+			"params":params,
+			"id":1
+		}
+		headers = {'Content-type':'application/json'}
+		debugTraceTransaction = session.post(
+			'http://localhost:'+rpcport, 
+			json=payload, 
+			headers=headers
+		)
+		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
 
-		if (debug):	
+		# Handler for different EVM Opcodes
+		if (transactionTrace):
+			for log in transactionTrace:
+				
+				if(log['op'] == 'CALL'):
+					txnGas = int(log['stack'][-1], 16)
+					internalFromAddr = toAddr
+					internalToAddr = '0x' + log['stack'][-2][24:64]	# Turn 64 char string into formatted address TODO: refactor into helper methhod
+					internalTxnValue = int(log['stack'][-3], 16)
+						
+					internalFromAddrInitialBalance = getInitialBalance(internalFromAddr) + txnValue # Note: We add txnValue to cover instances where contract is a "pass through" contract
+					internalToAddrInitialBalance = getInitialBalance(internalToAddr)	
+					
+					# TODO: Placeholder for addressBalances append
+					addressBalances[internalFromAddr].append({ 
+						'origBlock': curBlockNum, 
+						'endBal': internalFromAddrInitialBalance - internalTxnValue, 
+						'epoch': txnEpoch, # TODO: Replace with epoch-pushing algorithm
+						'txnType': "internal-send",
+						'txnValue': -internalTxnValue
+					})
+					addressBalances[internalToAddr].append({
+						'origBlock': curBlockNum, 
+						'endBal': internalToAddrInitialBalance + internalTxnValue,
+						'epoch': txnEpoch, # TODO: replace with epoch-pushing algorithm
+						'txnType': "internal-receive",
+						'txnValue': internalTxnValue
+					})
+
+					# Sanity check for internal transactions
+					if (internalFromAddrInitialBalance < internalTxnValue): 
+						debug_CALL_transactions = True	
+						debug_transaction = True	
+
+					if (debug_CALL_transactions):	
+						print "====== Hash: " + txnHash
+						print "TxnGas: " + str(txnGas)
+						print "Internal fromAddr: " + internalFromAddr
+						print "Internal toAddr: " + internalToAddr
+						print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
+						debug_CALL_transactions = False
+
+		if (debug_transaction):	
 			print "	========= New Txn ========"
 			print "	Current Block Num: " + str(curBlockNum)
 			print "	from: " + fromAddr
@@ -162,7 +211,7 @@ for curBlockNum in range(startBlock,endBlock):
 				print "	to Address balance before: " + str(web3.fromWei(toAddrInitialBalance, 'ether'))
 				print " to Address balance after: " + str(web3.fromWei(newToAddrBal, 'ether'))
 		
-		debug = False		
+		debug_transaction = False		
 
 # Get statistics
 def shardSize(epochShards):
@@ -170,5 +219,5 @@ def shardSize(epochShards):
 
 shardedChainStats = { epoch: shardSize(epochShards) for epoch, epochShards in shardedChain.items() }
 
+pprint.pprint(addressBalances)
 pprint.pprint(shardedChainStats)
-
