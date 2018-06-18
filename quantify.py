@@ -50,12 +50,12 @@ def getInitialBalance(addr):
 		addressTransactionLogs[addr] = [{ 
 			'origBlock': startBlock-1, 
 			'startBal': addressBal,
-			'globalEndBal': addressBal,
+			'shardEpochEndBal': addressBal,
 			'shard': -1,
 			'epoch': 0,
 			'txnType':"init"
 		}]
-	return addressTransactionLogs[addr][-1]['globalEndBal']
+	return addressTransactionLogs[addr][-1]['shardEpochEndBal']
 
 def addToShardedChain(txnEpoch, shard, txnHash):
 	if(txnEpoch not in shardedChain): shardedChain[txnEpoch] = {}
@@ -102,7 +102,7 @@ for curBlockNum in range(startBlock,endBlock):
 		# Algorithm to push transaction to the next epoch
 		lastShardTxn = findLastTxnFromShard(fromAddr, shard)
 		lastTxn = addressTransactionLogs[fromAddr][-1]
-		txnEpoch = lastTxn['epoch']		# TODO: Add 1 if previous transaction's shardEpochEndBal is lower than transaction, so you would need to depend on globalEndBal
+		txnEpoch = lastTxn['epoch']		# TODO: Add 1 if previous transaction's shardEpochEndBal is lower than transaction, so you would need to depend on shardEpochEndBal
 
 		# Calculate new balances after transaction
 		newFromAddrBal = fromAddrInitialBalance - txnValue
@@ -118,7 +118,7 @@ for curBlockNum in range(startBlock,endBlock):
 		addressTransactionLogs[fromAddr].append({ 
 			'origBlock': curBlockNum, 
 			'startBal': fromAddrInitialBalance,
-			'globalEndBal': newFromAddrBal, 
+			'shardEpochEndBal': newFromAddrBal, 
 			'epoch': txnEpoch,
 			'shard': shard,
 			'txnType': "send",
@@ -127,7 +127,7 @@ for curBlockNum in range(startBlock,endBlock):
 		if (toAddr): addressTransactionLogs[toAddr].append({
 			'origBlock': curBlockNum, 
 			'startBal': toAddrInitialBalance,
-			'globalEndBal': newToAddrBal,
+			'shardEpochEndBal': newToAddrBal,
 			'epoch': txnEpoch,
 			'shard': shard,
 			'txnType': "receive",
@@ -167,7 +167,7 @@ for curBlockNum in range(startBlock,endBlock):
 					addressTransactionLogs[internalFromAddr].append({ 
 						'origBlock': curBlockNum, 
 						'startBal': internalFromAddrInitialBalance,
-						'globalEndBal': internalFromAddrInitialBalance - internalTxnValue, 
+						'shardEpochEndBal': internalFromAddrInitialBalance - internalTxnValue, 
 						'epoch': txnEpoch, # TODO: Replace with epoch-pushing algorithm
 						'shard': shard,
 						'txnType': "internal-send",
@@ -176,7 +176,7 @@ for curBlockNum in range(startBlock,endBlock):
 					addressTransactionLogs[internalToAddr].append({
 						'origBlock': curBlockNum, 
 						'startBal': internalToAddrInitialBalance,
-						'globalEndBal': internalToAddrInitialBalance + internalTxnValue,
+						'shardEpochEndBal': internalToAddrInitialBalance + internalTxnValue,
 						'epoch': txnEpoch, # TODO: replace with epoch-pushing algorithm
 						'shard': shard,
 						'txnType': "internal-receive",
