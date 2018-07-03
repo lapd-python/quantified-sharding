@@ -2,6 +2,7 @@ from web3 import Web3, HTTPProvider
 import json
 import pprint
 import requests
+from random import randint
 
 # Debug flags
 debug_transaction = False
@@ -28,27 +29,27 @@ counter = 0
 
 # Current parameters
 startBlock = 4400000
-endBlock = 4400010
-maxShardSize = 50
+endBlock = 4400050
+maxShardSize = 999999999999
 
 # Opcodes to monitor
 monitoredOpcodes = [
-	'CREATE', 
-	'CALL', 
+	'CREATE',
+	'CALL',
 	'SLOAD',
-	'SSTORE', 
-	'CALLCODE', 
-	'DELEGATECALL', 
-	'SUICIDE', 
+	'SSTORE',
+	'CALLCODE',
+	'DELEGATECALL',
+	'SUICIDE',
 	'SELFDESTRUCT'
 ]
-	
+
 # Function to getInitialBalance
 def getInitialBalance(addr):
 	if(addr not in addressTransactionLogs):
 		addressBal = web3.eth.getBalance(addr, block_identifier=(startBlock-1))
-		addressTransactionLogs[addr] = [{ 
-			'origBlock': startBlock-1, 
+		addressTransactionLogs[addr] = [{
+			'origBlock': startBlock-1,
 			'startBal': addressBal,
 			'shardEpochEndBal': addressBal,
 			'shard': -1,
@@ -60,49 +61,55 @@ def getInitialBalance(addr):
 def addToShardedChain(txnEpoch, shard, txnHash):
 	if(txnEpoch not in shardedChain): shardedChain[txnEpoch] = {}
 	if (shard not in shardedChain[txnEpoch]): shardedChain[txnEpoch][shard] = []
-	
+
 	# Move to next epoch if epochShard is full
 	currentShardSize = len(shardedChain[txnEpoch][shard])
-	if (currentShardSize >= maxShardSize): 
+	if (currentShardSize >= maxShardSize):
 		addToShardedChain(txnEpoch+1, shard, txnHash)
 	else:
 		shardedChain[txnEpoch][shard].append(txnHash)
 
 def findLastTxnFromShard(address, shard):
 	for txn in reversed(addressTransactionLogs[address]):
-		if txn['shard'] == shard: 
-			print txn
+		if txn['shard'] == shard:
 			return txn
 	return None
 
 for curBlockNum in range(startBlock,endBlock):
-	
-	# Gets current block	
+
+	# Gets current block
 	currentBlock = web3.eth.getBlock(curBlockNum, full_transactions=True)
-	print "+++++++ Current block: " + str(curBlockNum) + " +++++++++++"
+	print("+++++++ Current block: " + str(curBlockNum) + " +++++++++++")
 
 	# Iterates through current block's transactions
 	for txn in currentBlock.transactions:
-		
-		# fromAddress details	
+
+		# fromAddress details
 		fromAddr = txn['from']
-		fromAddrInitialBalance = getInitialBalance(fromAddr)		
-		
+		fromAddrInitialBalance = getInitialBalance(fromAddr)
+
 		# Shard
 		shard = hash(fromAddr) % 50
+		# shard = randint(0,49)
 
-		# toAddress details	
+		# toAddress details
 		toAddr = txn['to']
 		if (toAddr): toAddrInitialBalance = getInitialBalance(toAddr)
 
 		# txn details
 		txnValue = txn['value']
 		txnHash = txn['hash']
-		
+
 		# Algorithm to push transaction to the next epoch
 		lastShardTxn = findLastTxnFromShard(fromAddr, shard)
 		lastTxn = addressTransactionLogs[fromAddr][-1]
 		txnEpoch = lastTxn['epoch']		# TODO: Add 1 if previous transaction's shardEpochEndBal is lower than transaction, so you would need to depend on shardEpochEndBal
+		if(lastTxn['shard'] != shard and txnValue > lastTxn['startBal']):
+			print("=============")
+			print(lastTxn)
+			print(shard)
+			print(txnValue)
+			txnEpoch += 1
 
 		# Calculate new balances after transaction
 		newFromAddrBal = fromAddrInitialBalance - txnValue
@@ -115,17 +122,17 @@ for curBlockNum in range(startBlock,endBlock):
 		# Insert the current transaction addressTransactionLogs
 		# if (fromAddr not in addressTransactionLogs):
 		# 		addressTransactionLogs[fromAddr] = []
-		addressTransactionLogs[fromAddr].append({ 
-			'origBlock': curBlockNum, 
+		addressTransactionLogs[fromAddr].append({
+			'origBlock': curBlockNum,
 			'startBal': fromAddrInitialBalance,
-			'shardEpochEndBal': newFromAddrBal, 
+			'shardEpochEndBal': newFromAddrBal,
 			'epoch': txnEpoch,
 			'shard': shard,
 			'txnType': "send",
 			'txnValue': -txnValue
 		})
 		if (toAddr): addressTransactionLogs[toAddr].append({
-			'origBlock': curBlockNum, 
+			'origBlock': curBlockNum,
 			'startBal': toAddrInitialBalance,
 			'shardEpochEndBal': newToAddrBal,
 			'epoch': txnEpoch,
@@ -133,8 +140,8 @@ for curBlockNum in range(startBlock,endBlock):
 			'txnType': "receive",
 			'txnValue': txnValue
 		})
-	
-		# Gets EVM Trace from debug_traceTransaction	
+
+		# Gets EVM Trace from debug_traceTransaction
 		params = [txnHash]
 		payload = {
 			"jsonrpc":"2.0",
@@ -144,8 +151,8 @@ for curBlockNum in range(startBlock,endBlock):
 		}
 		headers = {'Content-type':'application/json'}
 		debugTraceTransaction = session.post(
-			'http://localhost:'+rpcport, 
-			json=payload, 
+			'http://localhost:'+rpcport,
+			json=payload,
 			headers=headers
 		)
 		transactionTrace = debugTraceTransaction.json()['result']['structLogs']
@@ -153,28 +160,28 @@ for curBlockNum in range(startBlock,endBlock):
 		# Handler for different EVM Opcodes
 		if (transactionTrace):
 			for log in transactionTrace:
-				
+
 				if(log['op'] == 'CALL'):
 					txnGas = int(log['stack'][-1], 16)
 					internalFromAddr = toAddr
 					internalToAddr = '0x' + log['stack'][-2][24:64]	# Turn 64 char string into formatted address TODO: refactor into helper methhod
 					internalTxnValue = int(log['stack'][-3], 16)
-						
+
 					internalFromAddrInitialBalance = getInitialBalance(internalFromAddr) + txnValue # Note: We add txnValue to cover instances where contract is a "pass through" contract
-					internalToAddrInitialBalance = getInitialBalance(internalToAddr)	
-					
+					internalToAddrInitialBalance = getInitialBalance(internalToAddr)
+
 					# TODO: Placeholder for addressTransactionLogs append
-					addressTransactionLogs[internalFromAddr].append({ 
-						'origBlock': curBlockNum, 
+					addressTransactionLogs[internalFromAddr].append({
+						'origBlock': curBlockNum,
 						'startBal': internalFromAddrInitialBalance,
-						'shardEpochEndBal': internalFromAddrInitialBalance - internalTxnValue, 
+						'shardEpochEndBal': internalFromAddrInitialBalance - internalTxnValue,
 						'epoch': txnEpoch, # TODO: Replace with epoch-pushing algorithm
 						'shard': shard,
 						'txnType': "internal-send",
 						'txnValue': -internalTxnValue
 					})
 					addressTransactionLogs[internalToAddr].append({
-						'origBlock': curBlockNum, 
+						'origBlock': curBlockNum,
 						'startBal': internalToAddrInitialBalance,
 						'shardEpochEndBal': internalToAddrInitialBalance + internalTxnValue,
 						'epoch': txnEpoch, # TODO: replace with epoch-pushing algorithm
@@ -184,32 +191,32 @@ for curBlockNum in range(startBlock,endBlock):
 					})
 
 					# Sanity check for internal transactions
-					if (internalFromAddrInitialBalance < internalTxnValue): 
-						debug_CALL_transactions = True	
-						debug_transaction = True	
+					if (internalFromAddrInitialBalance < internalTxnValue):
+						debug_CALL_transactions = True
+						debug_transaction = True
 
-					if (debug_CALL_transactions):	
-						print "====== Hash: " + txnHash
-						print "TxnGas: " + str(txnGas)
-						print "Internal fromAddr: " + internalFromAddr
-						print "Internal toAddr: " + internalToAddr
-						print "Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether'))
+					if (debug_CALL_transactions):
+						print("====== Hash: " + txnHash)
+						print("TxnGas: " + str(txnGas))
+						print("Internal fromAddr: " + internalFromAddr)
+						print("Internal toAddr: " + internalToAddr)
+						print("Internal txnValue: " + str(web3.fromWei(internalTxnValue, 'ether')))
 						debug_CALL_transactions = False
 
-		if (debug_transaction):	
-			print "	========= New Txn ========"
-			print "	Current Block Num: " + str(curBlockNum)
-			print "	from: " + fromAddr
-			print "	from Address balance before: " + str(web3.fromWei(fromAddrInitialBalance, 'ether'))
-			print pprint.pprint(addressTransactionLogs[fromAddr])
-			print "	txnValue: " + str(web3.fromWei(txnValue, 'ether'))
-			print "	from Address balance after: " + str(web3.fromWei(newFromAddrBal, 'ether'))
-			if (toAddr): 
-				print "	to: " + toAddr
-				print "	to Address balance before: " + str(web3.fromWei(toAddrInitialBalance, 'ether'))
-				print " to Address balance after: " + str(web3.fromWei(newToAddrBal, 'ether'))
-		
-		debug_transaction = False		
+		if (debug_transaction):
+			print("	========= New Txn ========")
+			print("	Current Block Num: " + str(curBlockNum))
+			print("	from: " + fromAddr)
+			print("	from Address balance before: " + str(web3.fromWei(fromAddrInitialBalance, 'ether')))
+			print(pprint.pprint(addressTransactionLogs[fromAddr]))
+			print("	txnValue: " + str(web3.fromWei(txnValue, 'ether')))
+			print("	from Address balance after: " + str(web3.fromWei(newFromAddrBal, 'ether')))
+			if (toAddr):
+				print("	to: " + toAddr)
+				print("	to Address balance before: " + str(web3.fromWei(toAddrInitialBalance, 'ether')))
+				print(" to Address balance after: " + str(web3.fromWei(newToAddrBal, 'ether')))
+
+		debug_transaction = False
 
 # Get statistics
 def shardSize(epochShards):
@@ -217,5 +224,5 @@ def shardSize(epochShards):
 
 shardedChainStats = { epoch: shardSize(epochShards) for epoch, epochShards in shardedChain.items() }
 
-pprint.pprint(addressTransactionLogs)
+# pprint.pprint(addressTransactionLogs)
 pprint.pprint(shardedChainStats)
